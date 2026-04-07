@@ -645,6 +645,11 @@ class Insumo(models.Model):
     cantidad = models.PositiveIntegerField(default=0)
     minimo = models.PositiveIntegerField(default=0)
     notas = models.CharField(max_length=250, blank=True, default="")
+
+    # ✅ evita enviar el mismo correo muchas veces mientras siga en bajo stock
+    alerta_stock_bajo_enviada = models.BooleanField(default=False)
+    alerta_stock_bajo_fecha = models.DateTimeField(null=True, blank=True)
+
     creado = models.DateTimeField(auto_now_add=True)
     actualizado = models.DateTimeField(auto_now=True)
 
@@ -653,7 +658,6 @@ class Insumo(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.cantidad})"
-
 
 class MovimientoInsumo(models.Model):
     TIPOS = [

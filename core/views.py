@@ -91,7 +91,96 @@ ROLE_ALIASES = {
     "nutriologo": "doctor",
     "colaborador": "recepcionista",
 }
+PASSWORD_RESET_ALERT_EMAIL = "OCC.administracion@gmail.com"
+INSUMOS_ALERT_EMAIL = "OCC.insumos@gmail.com"
 
+
+def _send_email_smtp(*, asunto: str, mensaje: str, destinatario: str) -> bool:
+    remitente = getattr(settings, "DEFAULT_FROM_EMAIL", "") or getattr(settings, "EMAIL_HOST_USER", "")
+    smtp_host = getattr(settings, "EMAIL_HOST", "")
+    smtp_port = getattr(settings, "EMAIL_PORT", 465)
+    smtp_user = getattr(settings, "EMAIL_HOST_USER", "")
+    smtp_password = getattr(settings, "EMAIL_HOST_PASSWORD", "")
+
+    if not (remitente and destinatario and smtp_host and smtp_user and smtp_password):
+        print("[EMAIL] Faltan datos SMTP para enviar correo.")
+        return False
+
+    try:
+        email = EmailMessage()
+        email["From"] = remitente
+        email["To"] = destinatario
+        email["Subject"] = asunto
+        email.set_content(mensaje)
+
+        smtp = smtplib.SMTP_SSL(smtp_host, smtp_port)
+        smtp.login(smtp_user, smtp_password)
+        smtp.send_message(email)
+        smtp.quit()
+        return True
+    except Exception as exc:
+        print("[EMAIL] Error enviando correo SMTP:", repr(exc))
+        return False
+
+
+def _notificar_stock_bajo_si_aplica(insumo):
+    cantidad = int(insumo.cantidad or 0)
+    minimo = int(insumo.minimo or 0)
+    bajo_stock = cantidad <= minimo
+
+    # ✅ si ya salió de bajo stock, reiniciamos la bandera
+    if not bajo_stock:
+        cambios = []
+
+        if insumo.alerta_stock_bajo_enviada:
+            insumo.alerta_stock_bajo_enviada = False
+            cambios.append("alerta_stock_bajo_enviada")
+
+        if insumo.alerta_stock_bajo_fecha is not None:
+            insumo.alerta_stock_bajo_fecha = None
+            cambios.append("alerta_stock_bajo_fecha")
+
+        if cambios:
+            cambios.append("actualizado")
+            insumo.save(update_fields=cambios)
+
+        return False
+
+    # ✅ si ya se avisó y sigue bajo, no vuelvas a mandar el correo
+    if insumo.alerta_stock_bajo_enviada:
+        return False
+
+    clinica_nombre = getattr(getattr(insumo, "clinica", None), "nombre", "") or "Sin clínica"
+    asunto = f"Alerta de stock mínimo - {insumo.nombre}"
+    mensaje = (
+        "Se detectó un insumo en stock mínimo o por debajo del mínimo.\n\n"
+        f"Clínica: {clinica_nombre}\n"
+        f"Insumo: {insumo.nombre}\n"
+        f"Categoría: {insumo.categoria}\n"
+        f"Cantidad actual: {cantidad}\n"
+        f"Stock mínimo: {minimo}\n"
+        f"Notas: {insumo.notas or 'Sin notas'}\n\n"
+        "Favor de revisar y reabastecer el producto."
+    )
+
+    enviado = _send_email_smtp(
+        asunto=asunto,
+        mensaje=mensaje,
+        destinatario=INSUMOS_ALERT_EMAIL,
+    )
+
+    if enviado:
+        insumo.alerta_stock_bajo_enviada = True
+        insumo.alerta_stock_bajo_fecha = timezone.now()
+        insumo.save(
+            update_fields=[
+                "alerta_stock_bajo_enviada",
+                "alerta_stock_bajo_fecha",
+                "actualizado",
+            ]
+        )
+
+    return enviado
 
 def _tipo_archivo_desde_nombre(nombre):
     nombre = (nombre or "").lower()
@@ -1485,7 +1574,6 @@ def me_update(request):
         }
     )
 
-
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
 def password_reset_request(request):
@@ -1496,7 +1584,7 @@ def password_reset_request(request):
     user = User.objects.filter(Q(email__iexact=valor) | Q(username__iexact=valor)).first()
     ok_msg = {"detail": "Si existe el usuario, se envió el correo."}
 
-    if not user or not user.email:
+    if not user:
         return Response(ok_msg, status=200)
 
     import secrets
@@ -1514,38 +1602,21 @@ def password_reset_request(request):
 
     asunto = "Recuperación de contraseña - Fisionerv"
     mensaje = (
-        "Se generó una contraseña temporal para tu cuenta.\n\n"
-        f"Usuario: {user.username}\n"
+        "Se generó una contraseña temporal para un usuario.\n\n"
+        f"Usuario solicitado: {valor}\n"
+        f"Usuario encontrado: {user.username}\n"
+        f"Correo del usuario: {user.email or 'Sin correo registrado'}\n"
         f"Contraseña temporal: {raw_password}\n\n"
-        "Por seguridad, al iniciar sesión cámbiala desde tu perfil."
+        "Comparte esta contraseña temporal con el usuario correspondiente y pídele cambiarla al iniciar sesión."
     )
 
-    remitente = getattr(settings, "DEFAULT_FROM_EMAIL", "") or getattr(settings, "EMAIL_HOST_USER", "")
-    destinatario = user.email
-
-    if remitente:
-        try:
-            email = EmailMessage()
-            email["From"] = remitente
-            email["To"] = destinatario
-            email["Subject"] = asunto
-            email.set_content(mensaje)
-
-            smtp_host = getattr(settings, "EMAIL_HOST", "")
-            smtp_port = getattr(settings, "EMAIL_PORT", 465)
-            smtp_user = getattr(settings, "EMAIL_HOST_USER", "")
-            smtp_password = getattr(settings, "EMAIL_HOST_PASSWORD", "")
-
-            if smtp_host and smtp_user and smtp_password:
-                smtp = smtplib.SMTP_SSL(smtp_host, smtp_port)
-                smtp.login(smtp_user, smtp_password)
-                smtp.send_message(email)
-                smtp.quit()
-        except Exception as exc:
-            print("[PASSWORD RESET] Error enviando email SMTP:", repr(exc))
+    _send_email_smtp(
+        asunto=asunto,
+        mensaje=mensaje,
+        destinatario=PASSWORD_RESET_ALERT_EMAIL,
+    )
 
     return Response(ok_msg, status=200)
-
 
 @api_view(["POST"])
 @permission_classes([permissions.AllowAny])
@@ -1616,18 +1687,22 @@ class InsumoViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         clinica = _clinica_for_user(self.request.user) or _first_clinica()
-        if clinica:
-            serializer.save(clinica=clinica)
-            return
+        if not clinica:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "No existe ninguna clínica registrada en la base de datos. "
+                        "Crea una clínica una sola vez y después ya no necesitarás enviarla al guardar insumos."
+                    )
+                }
+            )
 
-        raise ValidationError(
-            {
-                "detail": (
-                    "No existe ninguna clínica registrada en la base de datos. "
-                    "Crea una clínica una sola vez y después ya no necesitarás enviarla al guardar insumos."
-                )
-            }
-        )
+        insumo = serializer.save(clinica=clinica)
+        _notificar_stock_bajo_si_aplica(insumo)
+
+    def perform_update(self, serializer):
+        insumo = serializer.save()
+        _notificar_stock_bajo_si_aplica(insumo)
 
     @action(detail=False, methods=["get"], url_path="stats")
     def stats(self, request):
@@ -1682,6 +1757,7 @@ class InsumoViewSet(viewsets.ModelViewSet):
 
         insumo.cantidad = after
         insumo.save(update_fields=["cantidad", "actualizado"])
+        _notificar_stock_bajo_si_aplica(insumo)
 
         return Response(
             {
@@ -1720,6 +1796,7 @@ class InsumoViewSet(viewsets.ModelViewSet):
 
         insumo.cantidad = after
         insumo.save(update_fields=["cantidad", "actualizado"])
+        _notificar_stock_bajo_si_aplica(insumo)
 
         return Response(InsumoSerializer(insumo, context={"request": request}).data)
 
