@@ -1,3 +1,4 @@
+#proyecto ortho clinic
 from datetime import datetime, timedelta
 from decimal import Decimal
 from email.message import EmailMessage
@@ -905,6 +906,7 @@ class ComentarioViewSet(viewsets.ModelViewSet):
         tipo_objetivo = (request.query_params.get("tipo_objetivo") or "").strip()
         profesional_id = (request.query_params.get("profesional") or "").strip()
         servicio_id = (request.query_params.get("servicio") or "").strip()
+        objetivo_publico = (request.query_params.get("objetivo_publico") or "").strip()
 
         if tipo_objetivo in ["profesional", "servicio"]:
             queryset = queryset.filter(tipo_objetivo=tipo_objetivo)
@@ -912,7 +914,8 @@ class ComentarioViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(profesional_id=profesional_id)
         if servicio_id:
             queryset = queryset.filter(servicio_id=servicio_id)
-
+        if objetivo_publico:
+            queryset = queryset.filter(objetivo_publico=objetivo_publico)
         serializer = ComentarioPublicSerializer(queryset[:50], many=True, context={"request": request})
         return Response(serializer.data)
 

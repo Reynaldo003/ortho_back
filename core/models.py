@@ -1,3 +1,4 @@
+#proyecto ortho clinic
 # core/models.py
 from django.conf import settings
 from django.db import models
@@ -403,6 +404,11 @@ class Comentario(models.Model):
         ("servicio", "Servicio"),
     ]
 
+    OBJETIVOS_PUBLICOS_SERVICIO = [
+        ("rehabilitacion_general", "Rehabilitación general"),
+        ("acondicionamiento_general", "Acondicionamiento general"),
+    ]
+
     clinica = models.ForeignKey(
         Clinica,
         on_delete=models.CASCADE,
@@ -413,7 +419,7 @@ class Comentario(models.Model):
         max_length=20,
         choices=TIPOS_OBJETIVO,
         db_index=True,
-        default=""
+        default="",
     )
 
     profesional = models.ForeignKey(
@@ -432,6 +438,14 @@ class Comentario(models.Model):
         related_name="comentarios_recibidos",
     )
 
+    objetivo_publico = models.CharField(
+        max_length=40,
+        choices=OBJETIVOS_PUBLICOS_SERVICIO,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+
     descripcion = models.TextField(max_length=300)
     calificacion = models.PositiveSmallIntegerField()
     aprobado = models.BooleanField(default=False, db_index=True)
@@ -448,19 +462,28 @@ class Comentario(models.Model):
             models.Index(fields=["aprobado", "creado"]),
             models.Index(fields=["tipo_objetivo", "profesional"]),
             models.Index(fields=["tipo_objetivo", "servicio"]),
+            models.Index(fields=["tipo_objetivo", "objetivo_publico"]),
         ]
 
     def __str__(self):
         objetivo = ""
+
         if self.tipo_objetivo == "profesional" and self.profesional:
             objetivo = self.profesional.get_full_name() or self.profesional.username
-        elif self.tipo_objetivo == "servicio" and self.servicio:
-            objetivo = self.servicio.nombre
+        elif self.tipo_objetivo == "servicio":
+            if self.objetivo_publico == "rehabilitacion_general":
+                objetivo = "Rehabilitación general"
+            elif self.objetivo_publico == "acondicionamiento_general":
+                objetivo = "Acondicionamiento general"
+            elif self.servicio:
+                objetivo = self.servicio.nombre
+            else:
+                objetivo = "Servicio general"
         else:
             objetivo = "Sin objetivo"
 
         return f"{self.nombre_completo} ({self.calificacion}) - {objetivo}"
-
+    
 from django.conf import settings
 from django.db import models
 

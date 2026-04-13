@@ -1,3 +1,4 @@
+#proyecto ortho clinic
 from decimal import Decimal
 
 from django.contrib.auth.models import User
@@ -485,6 +486,18 @@ class PacienteInlineSerializer(serializers.ModelSerializer):
             "notas",
         ]
 
+OBJETIVOS_PUBLICOS_SERVICIO = {
+    "rehabilitacion_general": {
+        "nombre": "Rehabilitación general",
+        "subtitulo": "Terapia y rehabilitación física",
+        "tag": "Servicio",
+    },
+    "acondicionamiento_general": {
+        "nombre": "Acondicionamiento general",
+        "subtitulo": "Activación física y adulto mayor",
+        "tag": "Servicio",
+    },
+}
 
 class ComentarioSerializer(serializers.ModelSerializer):
     created_at = serializers.DateTimeField(source="creado", read_only=True)
@@ -501,6 +514,7 @@ class ComentarioSerializer(serializers.ModelSerializer):
             "tipo_objetivo",
             "profesional",
             "servicio",
+            "objetivo_publico",
             "descripcion",
             "calificacion",
             "aprobado",
@@ -526,6 +540,7 @@ class ComentarioSerializer(serializers.ModelSerializer):
             "nombre_completo": {"required": False, "allow_blank": True},
             "profesional": {"required": False, "allow_null": True},
             "servicio": {"required": False, "allow_null": True},
+            "objetivo_publico": {"required": False, "allow_blank": True},
         }
 
     def validate_calificacion(self, value):
@@ -549,10 +564,24 @@ class ComentarioSerializer(serializers.ModelSerializer):
     def validate_nombre_completo(self, value):
         return (value or "").strip() or "Paciente anónimo"
 
+    def validate_objetivo_publico(self, value):
+        value = (value or "").strip()
+        if not value:
+            return ""
+        if value not in OBJETIVOS_PUBLICOS_SERVICIO:
+            raise serializers.ValidationError("objetivo_publico inválido.")
+        return value
+
     def validate(self, attrs):
         tipo_objetivo = attrs.get("tipo_objetivo") or getattr(self.instance, "tipo_objetivo", None)
         profesional = attrs.get("profesional", getattr(self.instance, "profesional", None))
         servicio = attrs.get("servicio", getattr(self.instance, "servicio", None))
+        objetivo_publico = attrs.get(
+            "objetivo_publico",
+            getattr(self.instance, "objetivo_publico", ""),
+        ) or ""
+
+        objetivo_publico = objetivo_publico.strip()
 
         if tipo_objetivo == "profesional":
             if not profesional:
@@ -563,18 +592,33 @@ class ComentarioSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"profesional": "El profesional seleccionado no está disponible."}
                 )
+
             attrs["servicio"] = None
+            attrs["objetivo_publico"] = ""
 
         elif tipo_objetivo == "servicio":
-            if not servicio:
-                raise serializers.ValidationError(
-                    {"servicio": "Debes seleccionar el servicio al que pertenece la reseña."}
-                )
-            if not getattr(servicio, "activo", False):
-                raise serializers.ValidationError(
-                    {"servicio": "El servicio seleccionado no está disponible."}
-                )
-            attrs["profesional"] = None
+            if objetivo_publico:
+                if objetivo_publico not in OBJETIVOS_PUBLICOS_SERVICIO:
+                    raise serializers.ValidationError(
+                        {"objetivo_publico": "El objetivo público seleccionado no es válido."}
+                    )
+                attrs["profesional"] = None
+                attrs["servicio"] = None
+                attrs["objetivo_publico"] = objetivo_publico
+            else:
+                if not servicio:
+                    raise serializers.ValidationError(
+                        {
+                            "servicio": "Debes seleccionar un servicio real o enviar objetivo_publico."
+                        }
+                    )
+                if not getattr(servicio, "activo", False):
+                    raise serializers.ValidationError(
+                        {"servicio": "El servicio seleccionado no está disponible."}
+                    )
+
+                attrs["profesional"] = None
+                attrs["objetivo_publico"] = ""
 
         else:
             raise serializers.ValidationError(
@@ -582,8 +626,11 @@ class ComentarioSerializer(serializers.ModelSerializer):
             )
 
         attrs["nombre_completo"] = (
-            (attrs.get("nombre_completo") or getattr(self.instance, "nombre_completo", "") or "Paciente anónimo")
-            .strip()
+            (
+                attrs.get("nombre_completo")
+                or getattr(self.instance, "nombre_completo", "")
+                or "Paciente anónimo"
+            ).strip()
         )
 
         return attrs
@@ -596,12 +643,19 @@ class ComentarioSerializer(serializers.ModelSerializer):
     def get_objetivo_nombre(self, obj):
         if obj.tipo_objetivo == "profesional" and obj.profesional:
             return self._full_name_user(obj.profesional)
-        if obj.tipo_objetivo == "servicio" and obj.servicio:
-            return obj.servicio.nombre
+
+        if obj.tipo_objetivo == "servicio":
+            if obj.objetivo_publico in OBJETIVOS_PUBLICOS_SERVICIO:
+                return OBJETIVOS_PUBLICOS_SERVICIO[obj.objetivo_publico]["nombre"]
+            if obj.servicio:
+                return obj.servicio.nombre
+
         return "Objetivo no disponible"
 
     def get_objetivo_tag(self, obj):
-        return "Servicio" if obj.tipo_objetivo == "servicio" else "Doctor"
+        if obj.tipo_objetivo == "servicio":
+            return "Servicio"
+        return "Doctor"
 
     def get_objetivo_subtitulo(self, obj):
         if obj.tipo_objetivo == "profesional" and obj.profesional:
@@ -610,8 +664,11 @@ class ComentarioSerializer(serializers.ModelSerializer):
                 return staff.rol
             return "Profesional"
 
-        if obj.tipo_objetivo == "servicio" and obj.servicio:
-            return obj.servicio.descripcion or "Servicio"
+        if obj.tipo_objetivo == "servicio":
+            if obj.objetivo_publico in OBJETIVOS_PUBLICOS_SERVICIO:
+                return OBJETIVOS_PUBLICOS_SERVICIO[obj.objetivo_publico]["subtitulo"]
+            if obj.servicio:
+                return obj.servicio.descripcion or "Servicio"
 
         return ""
 
@@ -623,11 +680,12 @@ class ComentarioSerializer(serializers.ModelSerializer):
             if staff and staff.foto:
                 return request.build_absolute_uri(staff.foto.url) if request else staff.foto.url
 
-        if obj.tipo_objetivo == "servicio" and obj.servicio and obj.servicio.imagen:
-            return request.build_absolute_uri(obj.servicio.imagen.url) if request else obj.servicio.imagen.url
+        if obj.tipo_objetivo == "servicio":
+            if obj.servicio and obj.servicio.imagen:
+                return request.build_absolute_uri(obj.servicio.imagen.url) if request else obj.servicio.imagen.url
+            return None
 
         return None
-
 
 class ComentarioPublicSerializer(ComentarioSerializer):
     class Meta(ComentarioSerializer.Meta):
@@ -636,6 +694,7 @@ class ComentarioPublicSerializer(ComentarioSerializer):
             "tipo_objetivo",
             "profesional",
             "servicio",
+            "objetivo_publico",
             "nombre_completo",
             "calificacion",
             "descripcion",
@@ -646,7 +705,6 @@ class ComentarioPublicSerializer(ComentarioSerializer):
             "objetivo_foto_url",
         ]
         read_only_fields = fields
-
 
 class ServicioSerializer(serializers.ModelSerializer):
     imagen_url = serializers.SerializerMethodField(read_only=True)
