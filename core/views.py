@@ -1883,10 +1883,13 @@ class NotaClinicaViewSet(viewsets.ModelViewSet):
         def calc_edad(fecha_nac):
             if not fecha_nac:
                 return "—"
-            today = timezone.localdate()
+
+            today = datetime.now().date()
             edad = today.year - fecha_nac.year
+
             if (today.month, today.day) < (fecha_nac.month, fecha_nac.day):
                 edad -= 1
+
             return str(edad)
 
         buffer = BytesIO()
@@ -2216,10 +2219,13 @@ class RecetaMedicaViewSet(viewsets.ModelViewSet):
         def calc_edad(fecha_nac):
             if not fecha_nac:
                 return "-"
-            today = timezone.localdate()
+
+            today = datetime.now().date()
             edad = today.year - fecha_nac.year
+
             if (today.month, today.day) < (fecha_nac.month, fecha_nac.day):
                 edad -= 1
+
             return str(edad)
 
         def to_text(value, fallback="-"):
