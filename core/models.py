@@ -184,13 +184,15 @@ class NotaClinica(models.Model):
         on_delete=models.CASCADE,
         related_name="notas_clinicas",
     )
+
     cita = models.OneToOneField(
         "Cita",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="nota_clinica",
         null=True,
         blank=True,
     )
+
     sesion_clinica = models.OneToOneField(
         "SesionClinica",
         on_delete=models.SET_NULL,
@@ -198,6 +200,7 @@ class NotaClinica(models.Model):
         null=True,
         blank=True,
     )
+
     profesional = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -209,6 +212,7 @@ class NotaClinica(models.Model):
     fecha = models.DateField(default=date.today)
     tipo_nota = models.CharField(max_length=30, choices=TIPOS_NOTA, default="evolucion")
     contenido_nom004 = models.JSONField(default=dict, blank=True)
+
     subjetivo = models.TextField(blank=True, default="")
     objetivo = models.TextField(blank=True, default="")
     analisis = models.TextField(blank=True, default="")
@@ -234,11 +238,15 @@ class RecetaMedica(models.Model):
         on_delete=models.CASCADE,
         related_name="recetas_medicas",
     )
+
     cita = models.OneToOneField(
         "Cita",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="receta_medica",
+        null=True,
+        blank=True,
     )
+
     profesional = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -257,9 +265,12 @@ class RecetaMedica(models.Model):
 
     class Meta:
         ordering = ["-fecha", "-id"]
+        indexes = [
+            models.Index(fields=["paciente", "fecha"]),
+        ]
 
     def __str__(self):
-        return f"Receta cita {self.cita_id}"
+        return f"Receta paciente {self.paciente_id} - {self.fecha}"
 
 
 class EvidenciaClinica(models.Model):
@@ -274,11 +285,17 @@ class EvidenciaClinica(models.Model):
         on_delete=models.CASCADE,
         related_name="evidencias_clinicas",
     )
+
+    # Ahora la evidencia queda disponible de forma general en el expediente.
+    # Si viene de una cita, se puede conservar la relación, pero ya no es obligatoria.
     cita = models.ForeignKey(
         "Cita",
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
         related_name="evidencias_clinicas",
+        null=True,
+        blank=True,
     )
+
     sesion_clinica = models.ForeignKey(
         "SesionClinica",
         on_delete=models.SET_NULL,
@@ -286,6 +303,7 @@ class EvidenciaClinica(models.Model):
         null=True,
         blank=True,
     )
+
     subido_por = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -297,6 +315,7 @@ class EvidenciaClinica(models.Model):
     titulo = models.CharField(max_length=180, blank=True, default="")
     descripcion = models.TextField(blank=True, default="")
     tipo_archivo = models.CharField(max_length=10, choices=TIPOS_ARCHIVO, default="otro")
+
     archivo = models.FileField(
         upload_to="evidencias_clinicas/%Y/%m/",
         validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp", "pdf"])],
@@ -307,12 +326,13 @@ class EvidenciaClinica(models.Model):
     class Meta:
         ordering = ["-creado", "-id"]
         indexes = [
+            models.Index(fields=["paciente", "creado"]),
             models.Index(fields=["paciente", "cita"]),
         ]
 
     def __str__(self):
-        return f"Evidencia {self.paciente_id} - {self.cita_id}"
-
+        return f"Evidencia paciente {self.paciente_id} - {self.id}"
+    
 class ExpedienteClinico(models.Model):
     paciente = models.OneToOneField(
         Paciente,

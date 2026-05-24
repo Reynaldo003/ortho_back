@@ -1056,7 +1056,6 @@ class InsumoSerializer(serializers.ModelSerializer):
             "clinica": {"read_only": True},
         }
 
-
 class NotaClinicaSerializer(serializers.ModelSerializer):
     paciente_nombre = serializers.SerializerMethodField(read_only=True)
     profesional_nombre = serializers.SerializerMethodField(read_only=True)
@@ -1065,6 +1064,11 @@ class NotaClinicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotaClinica
         fields = "__all__"
+        extra_kwargs = {
+            "cita": {"required": False, "allow_null": True},
+            "sesion_clinica": {"required": False, "allow_null": True},
+            "profesional": {"required": False, "allow_null": True},
+        }
 
     def get_paciente_nombre(self, obj):
         p = getattr(obj, "paciente", None)
@@ -1082,6 +1086,17 @@ class NotaClinicaSerializer(serializers.ModelSerializer):
         u = getattr(obj, "profesional", None)
         perfil = getattr(u, "staff_profile", None) if u else None
         return getattr(perfil, "cedula_profesional", "") or ""
+
+    def validate(self, attrs):
+        paciente = attrs.get("paciente") or getattr(self.instance, "paciente", None)
+        cita = attrs.get("cita", getattr(self.instance, "cita", None))
+
+        if paciente and cita and NumberOrNone(cita.paciente_id) != NumberOrNone(paciente.id):
+            raise serializers.ValidationError({
+                "cita": "La cita seleccionada no pertenece al paciente."
+            })
+
+        return attrs
 
 
 class RecetaMedicaSerializer(serializers.ModelSerializer):
@@ -1092,6 +1107,10 @@ class RecetaMedicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = RecetaMedica
         fields = "__all__"
+        extra_kwargs = {
+            "cita": {"required": False, "allow_null": True},
+            "profesional": {"required": False, "allow_null": True},
+        }
 
     def get_paciente_nombre(self, obj):
         p = getattr(obj, "paciente", None)
@@ -1110,6 +1129,17 @@ class RecetaMedicaSerializer(serializers.ModelSerializer):
         perfil = getattr(u, "staff_profile", None) if u else None
         return getattr(perfil, "cedula_profesional", "") or ""
 
+    def validate(self, attrs):
+        paciente = attrs.get("paciente") or getattr(self.instance, "paciente", None)
+        cita = attrs.get("cita", getattr(self.instance, "cita", None))
+
+        if paciente and cita and NumberOrNone(cita.paciente_id) != NumberOrNone(paciente.id):
+            raise serializers.ValidationError({
+                "cita": "La cita seleccionada no pertenece al paciente."
+            })
+
+        return attrs
+
 
 class EvidenciaClinicaSerializer(serializers.ModelSerializer):
     archivo_url = serializers.SerializerMethodField(read_only=True)
@@ -1118,6 +1148,11 @@ class EvidenciaClinicaSerializer(serializers.ModelSerializer):
     class Meta:
         model = EvidenciaClinica
         fields = "__all__"
+        extra_kwargs = {
+            "cita": {"required": False, "allow_null": True},
+            "sesion_clinica": {"required": False, "allow_null": True},
+            "subido_por": {"required": False, "allow_null": True},
+        }
 
     def get_archivo_url(self, obj):
         if not getattr(obj, "archivo", None):
@@ -1131,3 +1166,27 @@ class EvidenciaClinicaSerializer(serializers.ModelSerializer):
         if not getattr(obj, "archivo", None):
             return ""
         return (obj.archivo.name or "").split("/")[-1]
+
+    def validate(self, attrs):
+        paciente = attrs.get("paciente") or getattr(self.instance, "paciente", None)
+        cita = attrs.get("cita", getattr(self.instance, "cita", None))
+        sesion = attrs.get("sesion_clinica", getattr(self.instance, "sesion_clinica", None))
+
+        if paciente and cita and NumberOrNone(cita.paciente_id) != NumberOrNone(paciente.id):
+            raise serializers.ValidationError({
+                "cita": "La cita seleccionada no pertenece al paciente."
+            })
+
+        if paciente and sesion and NumberOrNone(sesion.paciente_id) != NumberOrNone(paciente.id):
+            raise serializers.ValidationError({
+                "sesion_clinica": "La sesión clínica seleccionada no pertenece al paciente."
+            })
+
+        return attrs
+
+
+def NumberOrNone(value):
+    try:
+        return int(value)
+    except Exception:
+        return None
