@@ -1,11 +1,14 @@
-#proyecto ortho clinic
+# proyecto ortho clinic
 # core/models.py
-from django.conf import settings
-from django.db import models
-from django.contrib.auth.models import User
-from django.utils import timezone
-from django.core.validators import FileExtensionValidator
+
 from datetime import date
+
+from django.conf import settings
+from django.contrib.auth.models import User
+from django.core.validators import FileExtensionValidator
+from django.db import models
+
+
 class StaffProfile(models.Model):
     ROLE_CHOICES = [
         ("doctor", "Doctor"),
@@ -14,19 +17,22 @@ class StaffProfile(models.Model):
         ("recepcionista", "Recepcionista"),
     ]
 
-    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="staff_profile",
+    )
     rol = models.CharField(max_length=30, choices=ROLE_CHOICES, default="recepcionista")
     telefono = models.CharField(max_length=30, blank=True, default="")
     descripcion = models.TextField(blank=True, default="")
     foto = models.ImageField(upload_to="staff/", blank=True, null=True)
     cedula_profesional = models.CharField(max_length=30, blank=True, default="")
-
     color_agenda = models.CharField(max_length=20, blank=True, default="#d47b06")
-
     creado = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.user.get_full_name() or self.user.username} ({self.rol})"
+
 
 class Clinica(models.Model):
     nombre = models.CharField(max_length=100)
@@ -62,7 +68,6 @@ class PerfilUsuario(models.Model):
         blank=True,
     )
     rol = models.CharField(max_length=30, choices=ROLES, default="recepcionista")
-
     titulo = models.CharField(max_length=30, blank=True)
     telefono = models.CharField(max_length=20, blank=True)
     foto = models.CharField(max_length=255, blank=True)
@@ -114,6 +119,7 @@ class Servicio(models.Model):
     def __str__(self):
         return f"{self.nombre} ({self.clinica.nombre})"
 
+
 class Paciente(models.Model):
     ESTADO_TRATAMIENTO = [
         ("en_tratamiento", "En tratamiento"),
@@ -131,8 +137,6 @@ class Paciente(models.Model):
     fecha_nac = models.DateField(null=True, blank=True)
     genero = models.CharField(max_length=30, blank=True)
 
-    # OJO:
-    # el teléfono NO debe ser único.
     telefono = models.CharField(max_length=20, blank=True, default="")
     correo = models.EmailField(max_length=100, blank=True)
 
@@ -147,9 +151,6 @@ class Paciente(models.Model):
     )
     fecha_alta = models.DateField(null=True, blank=True)
 
-    # =========================
-    # Facturación MX
-    # =========================
     requiere_factura = models.BooleanField(default=False)
     facturacion_razon_social = models.CharField(max_length=180, blank=True, default="")
     facturacion_rfc = models.CharField(max_length=13, blank=True, default="")
@@ -170,342 +171,6 @@ class Paciente(models.Model):
     def __str__(self):
         return f"{self.nombres} {self.apellido_pat}".strip()
 
-
-class NotaClinica(models.Model):
-    TIPOS_NOTA = [
-        ("historia_clinica", "Historia clínica"),
-        ("evolucion", "Nota de evolución"),
-        ("interconsulta", "Nota de interconsulta"),
-        ("referencia_traslado", "Nota de referencia / traslado"),
-    ]
-
-    paciente = models.ForeignKey(
-        Paciente,
-        on_delete=models.CASCADE,
-        related_name="notas_clinicas",
-    )
-
-    cita = models.OneToOneField(
-        "Cita",
-        on_delete=models.SET_NULL,
-        related_name="nota_clinica",
-        null=True,
-        blank=True,
-    )
-
-    sesion_clinica = models.OneToOneField(
-        "SesionClinica",
-        on_delete=models.SET_NULL,
-        related_name="nota_clinica",
-        null=True,
-        blank=True,
-    )
-
-    profesional = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="notas_clinicas_realizadas",
-    )
-
-    fecha = models.DateField(default=date.today)
-    tipo_nota = models.CharField(max_length=30, choices=TIPOS_NOTA, default="evolucion")
-    contenido_nom004 = models.JSONField(default=dict, blank=True)
-
-    subjetivo = models.TextField(blank=True, default="")
-    objetivo = models.TextField(blank=True, default="")
-    analisis = models.TextField(blank=True, default="")
-    plan = models.TextField(blank=True, default="")
-    observaciones = models.TextField(blank=True, default="")
-
-    creado = models.DateTimeField(auto_now_add=True)
-    actualizado = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-fecha", "-id"]
-        indexes = [
-            models.Index(fields=["paciente", "fecha"]),
-        ]
-
-    def __str__(self):
-        return f"Nota clínica {self.paciente_id} - {self.fecha}"
-
-
-class RecetaMedica(models.Model):
-    paciente = models.ForeignKey(
-        Paciente,
-        on_delete=models.CASCADE,
-        related_name="recetas_medicas",
-    )
-
-    cita = models.OneToOneField(
-        "Cita",
-        on_delete=models.SET_NULL,
-        related_name="receta_medica",
-        null=True,
-        blank=True,
-    )
-
-    profesional = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="recetas_medicas_realizadas",
-    )
-
-    fecha = models.DateField(default=date.today)
-    diagnostico = models.TextField(blank=True, default="")
-    indicaciones_generales = models.TextField(blank=True, default="")
-    medicamentos = models.JSONField(default=list, blank=True)
-
-    creado = models.DateTimeField(auto_now_add=True)
-    actualizado = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-fecha", "-id"]
-        indexes = [
-            models.Index(fields=["paciente", "fecha"]),
-        ]
-
-    def __str__(self):
-        return f"Receta paciente {self.paciente_id} - {self.fecha}"
-
-
-class EvidenciaClinica(models.Model):
-    TIPOS_ARCHIVO = [
-        ("imagen", "Imagen"),
-        ("pdf", "PDF"),
-        ("otro", "Otro"),
-    ]
-
-    paciente = models.ForeignKey(
-        Paciente,
-        on_delete=models.CASCADE,
-        related_name="evidencias_clinicas",
-    )
-
-    # Ahora la evidencia queda disponible de forma general en el expediente.
-    # Si viene de una cita, se puede conservar la relación, pero ya no es obligatoria.
-    cita = models.ForeignKey(
-        "Cita",
-        on_delete=models.SET_NULL,
-        related_name="evidencias_clinicas",
-        null=True,
-        blank=True,
-    )
-
-    sesion_clinica = models.ForeignKey(
-        "SesionClinica",
-        on_delete=models.SET_NULL,
-        related_name="evidencias_clinicas",
-        null=True,
-        blank=True,
-    )
-
-    subido_por = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="evidencias_clinicas_subidas",
-    )
-
-    titulo = models.CharField(max_length=180, blank=True, default="")
-    descripcion = models.TextField(blank=True, default="")
-    tipo_archivo = models.CharField(max_length=10, choices=TIPOS_ARCHIVO, default="otro")
-
-    archivo = models.FileField(
-        upload_to="evidencias_clinicas/%Y/%m/",
-        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp", "pdf"])],
-    )
-
-    creado = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-creado", "-id"]
-        indexes = [
-            models.Index(fields=["paciente", "creado"]),
-            models.Index(fields=["paciente", "cita"]),
-        ]
-
-    def __str__(self):
-        return f"Evidencia paciente {self.paciente_id} - {self.id}"
-    
-class ExpedienteClinico(models.Model):
-    paciente = models.OneToOneField(
-        Paciente,
-        on_delete=models.CASCADE,
-        related_name="expediente",
-    )
-
-    ocupacion = models.CharField(max_length=120, blank=True, default="")
-    direccion = models.TextField(blank=True, default="")
-    heredo_familiares = models.TextField(blank=True, default="")
-
-    antecedentes = models.JSONField(default=dict, blank=True)
-    habitos = models.JSONField(default=dict, blank=True)
-    documentos = models.JSONField(default=dict, blank=True)
-
-    notas_generales = models.TextField(blank=True, default="")
-
-    creado = models.DateTimeField(auto_now_add=True)
-    actualizado = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Expediente #{self.pk} - Paciente {self.paciente_id}"
-
-
-class SesionClinica(models.Model):
-    ESTADOS_SESION = [
-        ("estable", "Estable"),
-        ("mejorando", "Mejorando"),
-        ("igual", "Sin cambios"),
-        ("empeorando", "Empeorando"),
-        ("alta", "Alta"),
-    ]
-
-    paciente = models.ForeignKey(
-        Paciente,
-        on_delete=models.CASCADE,
-        related_name="sesiones_clinicas",
-    )
-    cita = models.ForeignKey(
-        "Cita",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="sesiones_clinicas",
-    )
-    profesional = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="sesiones_clinicas_realizadas",
-    )
-
-    fecha = models.DateField()
-    motivo_consulta = models.CharField(max_length=200, blank=True, default="")
-    intensidad_dolor = models.PositiveSmallIntegerField(null=True, blank=True)
-    zonas_dolor = models.JSONField(default=list, blank=True)
-
-    notas = models.TextField(blank=True, default="")
-    exploracion = models.TextField(blank=True, default="")
-    diagnostico = models.TextField(blank=True, default="")
-    tratamiento_realizado = models.TextField(blank=True, default="")
-    recomendaciones = models.TextField(blank=True, default="")
-
-    estado_sesion = models.CharField(
-        max_length=20,
-        choices=ESTADOS_SESION,
-        blank=True,
-        default="",
-    )
-
-    creado = models.DateTimeField(auto_now_add=True)
-    actualizado = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-fecha", "-id"]
-        indexes = [
-            models.Index(fields=["paciente", "fecha"]),
-            models.Index(fields=["profesional", "fecha"]),
-        ]
-
-    def __str__(self):
-        return f"Sesión {self.paciente_id} - {self.fecha}"
-
-
-class Comentario(models.Model):
-    TIPOS_OBJETIVO = [
-        ("profesional", "Profesional"),
-        ("servicio", "Servicio"),
-    ]
-
-    OBJETIVOS_PUBLICOS_SERVICIO = [
-        ("rehabilitacion_general", "Rehabilitación general"),
-        ("acondicionamiento_general", "Acondicionamiento general"),
-    ]
-
-    clinica = models.ForeignKey(
-        Clinica,
-        on_delete=models.CASCADE,
-        related_name="comentarios",
-    )
-
-    tipo_objetivo = models.CharField(
-        max_length=20,
-        choices=TIPOS_OBJETIVO,
-        db_index=True,
-        default="",
-    )
-
-    profesional = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="comentarios_recibidos",
-    )
-
-    servicio = models.ForeignKey(
-        "Servicio",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="comentarios_recibidos",
-    )
-
-    objetivo_publico = models.CharField(
-        max_length=40,
-        choices=OBJETIVOS_PUBLICOS_SERVICIO,
-        blank=True,
-        default="",
-        db_index=True,
-    )
-
-    descripcion = models.TextField(max_length=300)
-    calificacion = models.PositiveSmallIntegerField()
-    aprobado = models.BooleanField(default=False, db_index=True)
-    nombre_completo = models.CharField(
-        max_length=100,
-        blank=True,
-        default="Paciente anónimo",
-    )
-    creado = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ["-creado", "-id"]
-        indexes = [
-            models.Index(fields=["aprobado", "creado"]),
-            models.Index(fields=["tipo_objetivo", "profesional"]),
-            models.Index(fields=["tipo_objetivo", "servicio"]),
-            models.Index(fields=["tipo_objetivo", "objetivo_publico"]),
-        ]
-
-    def __str__(self):
-        objetivo = ""
-
-        if self.tipo_objetivo == "profesional" and self.profesional:
-            objetivo = self.profesional.get_full_name() or self.profesional.username
-        elif self.tipo_objetivo == "servicio":
-            if self.objetivo_publico == "rehabilitacion_general":
-                objetivo = "Rehabilitación general"
-            elif self.objetivo_publico == "acondicionamiento_general":
-                objetivo = "Acondicionamiento general"
-            elif self.servicio:
-                objetivo = self.servicio.nombre
-            else:
-                objetivo = "Servicio general"
-        else:
-            objetivo = "Sin objetivo"
-
-        return f"{self.nombre_completo} ({self.calificacion}) - {objetivo}"
-    
-from django.conf import settings
-from django.db import models
 
 class Cita(models.Model):
     ESTADOS = [
@@ -600,6 +265,337 @@ class Cita(models.Model):
     def __str__(self):
         return f"{self.paciente} - {self.fecha} {self.hora_inicio} ({self.agenda_tipo})"
 
+
+class NotaClinica(models.Model):
+    TIPOS_NOTA = [
+        ("historia_clinica", "Historia clínica"),
+        ("evolucion", "Nota de evolución"),
+        ("interconsulta", "Nota de interconsulta"),
+        ("referencia_traslado", "Nota de referencia / traslado"),
+    ]
+
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="notas_clinicas",
+    )
+    cita = models.OneToOneField(
+        "Cita",
+        on_delete=models.SET_NULL,
+        related_name="nota_clinica",
+        null=True,
+        blank=True,
+    )
+    sesion_clinica = models.OneToOneField(
+        "SesionClinica",
+        on_delete=models.SET_NULL,
+        related_name="nota_clinica",
+        null=True,
+        blank=True,
+    )
+    profesional = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notas_clinicas_realizadas",
+    )
+
+    fecha = models.DateField(default=date.today)
+    tipo_nota = models.CharField(max_length=30, choices=TIPOS_NOTA, default="evolucion")
+    contenido_nom004 = models.JSONField(default=dict, blank=True)
+
+    subjetivo = models.TextField(blank=True, default="")
+    objetivo = models.TextField(blank=True, default="")
+    analisis = models.TextField(blank=True, default="")
+    plan = models.TextField(blank=True, default="")
+    observaciones = models.TextField(blank=True, default="")
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        indexes = [
+            models.Index(fields=["paciente", "fecha"]),
+        ]
+
+    def __str__(self):
+        return f"Nota clínica {self.paciente_id} - {self.fecha}"
+
+
+class RecetaMedica(models.Model):
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="recetas_medicas",
+    )
+    cita = models.OneToOneField(
+        "Cita",
+        on_delete=models.SET_NULL,
+        related_name="receta_medica",
+        null=True,
+        blank=True,
+    )
+    profesional = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recetas_medicas_realizadas",
+    )
+
+    fecha = models.DateField(default=date.today)
+    diagnostico = models.TextField(blank=True, default="")
+    indicaciones_generales = models.TextField(blank=True, default="")
+    medicamentos = models.JSONField(default=list, blank=True)
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        indexes = [
+            models.Index(fields=["paciente", "fecha"]),
+        ]
+
+    def __str__(self):
+        return f"Receta paciente {self.paciente_id} - {self.fecha}"
+
+
+class ExpedienteClinico(models.Model):
+    paciente = models.OneToOneField(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="expediente",
+    )
+
+    ocupacion = models.CharField(max_length=120, blank=True, default="")
+    direccion = models.TextField(blank=True, default="")
+    heredo_familiares = models.TextField(blank=True, default="")
+
+    antecedentes = models.JSONField(default=dict, blank=True)
+    habitos = models.JSONField(default=dict, blank=True)
+    documentos = models.JSONField(default=dict, blank=True)
+
+    notas_generales = models.TextField(blank=True, default="")
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Expediente #{self.pk} - Paciente {self.paciente_id}"
+
+
+class SesionClinica(models.Model):
+    ESTADOS_SESION = [
+        ("estable", "Estable"),
+        ("mejorando", "Mejorando"),
+        ("igual", "Sin cambios"),
+        ("empeorando", "Empeorando"),
+        ("alta", "Alta"),
+    ]
+
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="sesiones_clinicas",
+    )
+    cita = models.ForeignKey(
+        "Cita",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sesiones_clinicas",
+    )
+    profesional = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sesiones_clinicas_realizadas",
+    )
+
+    fecha = models.DateField()
+    motivo_consulta = models.CharField(max_length=200, blank=True, default="")
+    intensidad_dolor = models.PositiveSmallIntegerField(null=True, blank=True)
+    zonas_dolor = models.JSONField(default=list, blank=True)
+
+    notas = models.TextField(blank=True, default="")
+    exploracion = models.TextField(blank=True, default="")
+    diagnostico = models.TextField(blank=True, default="")
+    tratamiento_realizado = models.TextField(blank=True, default="")
+    recomendaciones = models.TextField(blank=True, default="")
+
+    estado_sesion = models.CharField(
+        max_length=20,
+        choices=ESTADOS_SESION,
+        blank=True,
+        default="",
+    )
+
+    creado = models.DateTimeField(auto_now_add=True)
+    actualizado = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-fecha", "-id"]
+        indexes = [
+            models.Index(fields=["paciente", "fecha"]),
+            models.Index(fields=["profesional", "fecha"]),
+        ]
+
+    def __str__(self):
+        return f"Sesión {self.paciente_id} - {self.fecha}"
+
+
+class EvidenciaClinica(models.Model):
+    TIPOS_ARCHIVO = [
+        ("imagen", "Imagen"),
+        ("pdf", "PDF"),
+        ("otro", "Otro"),
+    ]
+
+    paciente = models.ForeignKey(
+        Paciente,
+        on_delete=models.CASCADE,
+        related_name="evidencias_clinicas",
+    )
+
+    # IMPORTANTE:
+    # Debe ser ForeignKey porque una cita puede tener muchas evidencias.
+    # No debe usar related_name="receta_medica", porque eso choca con RecetaMedica.cita.
+    cita = models.ForeignKey(
+        "Cita",
+        on_delete=models.SET_NULL,
+        related_name="evidencias_clinicas",
+        null=True,
+        blank=True,
+    )
+
+    sesion_clinica = models.ForeignKey(
+        "SesionClinica",
+        on_delete=models.SET_NULL,
+        related_name="evidencias_clinicas",
+        null=True,
+        blank=True,
+    )
+
+    subido_por = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="evidencias_clinicas_subidas",
+    )
+
+    titulo = models.CharField(max_length=180, blank=True, default="")
+    descripcion = models.TextField(blank=True, default="")
+    tipo_archivo = models.CharField(max_length=10, choices=TIPOS_ARCHIVO, default="otro")
+    archivo = models.FileField(
+        upload_to="evidencias_clinicas/%Y/%m/",
+        validators=[FileExtensionValidator(["jpg", "jpeg", "png", "webp", "pdf"])],
+    )
+
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado", "-id"]
+        indexes = [
+            models.Index(fields=["paciente", "creado"]),
+            models.Index(fields=["paciente", "cita"]),
+        ]
+
+    def __str__(self):
+        return f"Evidencia paciente {self.paciente_id} - {self.id}"
+
+
+class Comentario(models.Model):
+    TIPOS_OBJETIVO = [
+        ("profesional", "Profesional"),
+        ("servicio", "Servicio"),
+    ]
+
+    OBJETIVOS_PUBLICOS_SERVICIO = [
+        ("rehabilitacion_general", "Rehabilitación general"),
+        ("acondicionamiento_general", "Acondicionamiento general"),
+    ]
+
+    clinica = models.ForeignKey(
+        Clinica,
+        on_delete=models.CASCADE,
+        related_name="comentarios",
+    )
+
+    tipo_objetivo = models.CharField(
+        max_length=20,
+        choices=TIPOS_OBJETIVO,
+        db_index=True,
+        default="",
+    )
+
+    profesional = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="comentarios_recibidos",
+    )
+
+    servicio = models.ForeignKey(
+        "Servicio",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="comentarios_recibidos",
+    )
+
+    objetivo_publico = models.CharField(
+        max_length=40,
+        choices=OBJETIVOS_PUBLICOS_SERVICIO,
+        blank=True,
+        default="",
+        db_index=True,
+    )
+
+    descripcion = models.TextField(max_length=300)
+    calificacion = models.PositiveSmallIntegerField()
+    aprobado = models.BooleanField(default=False, db_index=True)
+    nombre_completo = models.CharField(
+        max_length=100,
+        blank=True,
+        default="Paciente anónimo",
+    )
+    creado = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creado", "-id"]
+        indexes = [
+            models.Index(fields=["aprobado", "creado"]),
+            models.Index(fields=["tipo_objetivo", "profesional"]),
+            models.Index(fields=["tipo_objetivo", "servicio"]),
+            models.Index(fields=["tipo_objetivo", "objetivo_publico"]),
+        ]
+
+    def __str__(self):
+        objetivo = ""
+
+        if self.tipo_objetivo == "profesional" and self.profesional:
+            objetivo = self.profesional.get_full_name() or self.profesional.username
+        elif self.tipo_objetivo == "servicio":
+            if self.objetivo_publico == "rehabilitacion_general":
+                objetivo = "Rehabilitación general"
+            elif self.objetivo_publico == "acondicionamiento_general":
+                objetivo = "Acondicionamiento general"
+            elif self.servicio:
+                objetivo = self.servicio.nombre
+            else:
+                objetivo = "Servicio general"
+        else:
+            objetivo = "Sin objetivo"
+
+        return f"{self.nombre_completo} ({self.calificacion}) - {objetivo}"
+
+
 class Pago(models.Model):
     cita = models.ForeignKey(
         Cita,
@@ -637,7 +633,6 @@ class Pago(models.Model):
         return f"Pago #{self.id} - Cita {self.cita_id}"
 
 
-
 class BloqueoHorario(models.Model):
     AGENDA_TIPOS = [
         ("general", "General"),
@@ -672,6 +667,7 @@ class BloqueoHorario(models.Model):
     def __str__(self):
         return f"Bloqueo {self.fecha} {self.hora_inicio}-{self.hora_termina} ({self.profesional_id}) [{self.agenda_tipo}]"
 
+
 class Insumo(models.Model):
     CATEGORIAS = [
         ("Insumo", "Insumo"),
@@ -689,7 +685,6 @@ class Insumo(models.Model):
     minimo = models.PositiveIntegerField(default=0)
     notas = models.CharField(max_length=250, blank=True, default="")
 
-    # ✅ evita enviar el mismo correo muchas veces mientras siga en bajo stock
     alerta_stock_bajo_enviada = models.BooleanField(default=False)
     alerta_stock_bajo_fecha = models.DateTimeField(null=True, blank=True)
 
@@ -701,6 +696,7 @@ class Insumo(models.Model):
 
     def __str__(self):
         return f"{self.nombre} ({self.cantidad})"
+
 
 class MovimientoInsumo(models.Model):
     TIPOS = [
