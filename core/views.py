@@ -92,6 +92,9 @@ ROLE_ALIASES = {
     "nutriologo": "doctor",
     "colaborador": "recepcionista",
 }
+
+PROFESSIONAL_APPOINTMENT_ROLES = ("doctor", "fisioterapeuta", "aux_fisioterapia")
+
 PASSWORD_RESET_ALERT_EMAIL = "OCC.administracion@gmail.com"
 INSUMOS_ALERT_EMAIL = "OCC.insumos@gmail.com"
 
@@ -776,7 +779,11 @@ class ProfesionalViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = (
-            User.objects.filter(is_active=True, staff_profile__isnull=False)
+            User.objects.filter(
+                is_active=True,
+                staff_profile__isnull=False,
+                staff_profile__rol__in=PROFESSIONAL_APPOINTMENT_ROLES,
+            )
             .select_related("staff_profile")
             .order_by("first_name", "last_name", "username")
         )
@@ -795,10 +802,15 @@ class ProfesionalViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(staff_profile__rol__in=["fisioterapeuta", "aux_fisioterapia"])
 
         if rol:
-            qs = qs.filter(staff_profile__rol=_normalize_role_value(rol))
+            rol_normalizado = _normalize_role_value(rol)
+            if rol_normalizado in PROFESSIONAL_APPOINTMENT_ROLES:
+                qs = qs.filter(staff_profile__rol=rol_normalizado)
+            else:
+                qs = qs.none()
 
         if roles:
-            qs = qs.filter(staff_profile__rol__in=roles)
+            roles_validos = [r for r in roles if r in PROFESSIONAL_APPOINTMENT_ROLES]
+            qs = qs.filter(staff_profile__rol__in=roles_validos) if roles_validos else qs.none()
 
         return qs
 
@@ -2189,9 +2201,8 @@ class RecetaMedicaViewSet(viewsets.ModelViewSet):
         return qs.order_by("-fecha", "-id")
 
     def _resolve_profesional(self, serializer):
-        cita = serializer.validated_data.get("cita") or getattr(serializer.instance, "cita", None)
-        if cita and cita.profesional_id:
-            return cita.profesional
+        # La receta debe firmarse con el usuario autenticado que la genera/edita,
+        # no con el profesional histórico de la cita.
         return self.request.user
 
     def perform_create(self, serializer):
@@ -2204,8 +2215,12 @@ class RecetaMedicaViewSet(viewsets.ModelViewSet):
     def pdf(self, request, pk=None):
         receta = self.get_object()
         paciente = receta.paciente
-        profesional = receta.profesional
+        profesional = request.user
         clinica = _first_clinica()
+
+        if receta.profesional_id != request.user.id:
+            receta.profesional = request.user
+            receta.save(update_fields=["profesional", "actualizado"])
 
         def full_name_user(user):
             if not user:

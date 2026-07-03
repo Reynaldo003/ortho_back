@@ -126,6 +126,12 @@ class Paciente(models.Model):
         ("alta", "Dado de alta"),
     ]
 
+    GENERO_CHOICES = [
+        ("masculino", "Masculino"),
+        ("femenino", "Femenino"),
+        ("otro", "Otro"),
+    ]
+
     clinica = models.ForeignKey(
         "Clinica",
         on_delete=models.CASCADE,
@@ -135,7 +141,7 @@ class Paciente(models.Model):
     apellido_pat = models.CharField(max_length=40)
     apellido_mat = models.CharField(max_length=40, blank=True)
     fecha_nac = models.DateField(null=True, blank=True)
-    genero = models.CharField(max_length=30, blank=True)
+    genero = models.CharField(max_length=20, choices=GENERO_CHOICES, blank=True, default="")
 
     telefono = models.CharField(max_length=20, blank=True, default="")
     correo = models.EmailField(max_length=100, blank=True)
